@@ -94,8 +94,25 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
         $timeout(function () {
           // trigger CSS transitions
           scope.animate = true;
-          // focus a freshly-opened modal
-          element[0].focus();
+
+          /**
+           * Auto-focusing of a freshly-opened modal element causes any child elements
+           * with the autofocus attribute to lose focus. This is an issue on touch-
+           * based devices, which will show and then hide the on-screen keyboard.
+           * Attempts to refocus the autofocus element via JavaScript will not reopen
+           * the on-screen keyboard. Fixed by updating the focusing logic to only
+           * autofocus the modal element if the modal does not contain an autofocus
+           * element.
+           *
+           * Calling focus() on the autofocus element gives it focus if the modal is
+           * opened more than once.
+           */
+          var autofocusElements = element[0].querySelectorAll('[autofocus]');
+          if (autofocusElements.length) {
+            autofocusElements[0].focus();
+          } else {
+            element[0].focus();
+          }
         });
 
         scope.close = function (evt) {
