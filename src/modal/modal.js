@@ -91,7 +91,17 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
           // trigger CSS transitions
           scope.animate = true;
           // focus a freshly-opened modal
-          element[0].focus();
+          /**
+           * Auto-focusing of a freshly-opened modal element causes any child elements
+           * with the autofocus attribute to loose focus. This is an issue on touch
+           * based devices which will show and then hide the onscreen keyboard.
+           * Attempts to refocus the autofocus element via JavaScript will not reopen
+           * the onscreen keyboard. Fixed by updated the focusing logic to only autofocus
+           * the modal element if the modal does not contain an autofocus element.
+           */
+          if (!element[0].querySelector || !element[0].querySelectorAll('[autofocus]').length) {
+            element[0].focus();
+          }
         });
 
         scope.close = function (evt) {
@@ -262,6 +272,17 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
         return openedWindows.top();
       };
 
+      /**
+       * @name get
+       * @param  {Object} modalInstance The modal instance to get the openedWindow object by
+       * @return {Object} Opened window
+       * @description
+       * Added get method (by modalInstance) to $modalStack
+       */
+      $modalStack.get = function (modalInstance) {
+        return openedWindows.get(modalInstance);
+      };
+
       return $modalStack;
     }])
 
@@ -272,8 +293,8 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
         backdrop: true, //can be also false or 'static'
         keyboard: true
       },
-      $get: ['$injector', '$rootScope', '$q', '$http', '$templateCache', '$controller', '$modalStack',
-        function ($injector, $rootScope, $q, $http, $templateCache, $controller, $modalStack) {
+      $get: ['$injector', '$rootScope', '$q', '$http', '$templateCache', '$controller', '$modalStack', '$transition', '$timeout',
+        function ($injector, $rootScope, $q, $http, $templateCache, $controller, $modalStack, $transition, $timeout) {
 
           var $modal = {};
 
@@ -358,7 +379,21 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
             });
 
             templateAndResolvePromise.then(function () {
-              modalOpenedDeferred.resolve(true);
+              /**
+               * Moved the modalOpenedDeferred to a transition end event (when available)
+               * so that the opened promise doesn't get resolved until the modal is in
+               * the DOM and visible / accessible
+               */
+              $timeout(function() {
+                var transitionEndEventName = $transition.transitionEndEventName;
+                if (transitionEndEventName) {
+                  $modalStack.get(modalInstance).value.modalDomEl.one(transitionEndEventName, function(evt) {
+                    modalOpenedDeferred.resolve(true);
+                  });
+                }
+                else {
+                  modalOpenedDeferred.resolve(true);
+                }
             }, function () {
               modalOpenedDeferred.reject(false);
             });
