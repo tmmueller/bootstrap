@@ -394,6 +394,7 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
                 else {
                   modalOpenedDeferred.resolve(true);
                 }
+              });
             }, function () {
               modalOpenedDeferred.reject(false);
             });
