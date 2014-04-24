@@ -90,7 +90,7 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
         $timeout(function () {
           // trigger CSS transitions
           scope.animate = true;
-          
+
           /**
            * Auto-focusing of a freshly-opened modal element causes any child elements
            * with the autofocus attribute to loose focus. This is an issue on touch
@@ -99,7 +99,7 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
            * the onscreen keyboard. Fixed by updated the focusing logic to only autofocus
            * the modal element if the modal does not contain an autofocus element.
            */
-          if (!element[0].querySelector || !element[0].querySelectorAll('[autofocus]').length) {
+          if (!element[0].querySelectorAll('[autofocus]').length) {
             element[0].focus();
           }
         });
@@ -376,22 +376,7 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
             });
 
             templateAndResolvePromise.then(function () {
-              /**
-               * Moved the modalOpenedDeferred to a transition end event (when available)
-               * so that the opened promise doesn't get resolved until the modal is in
-               * the DOM and visible / accessible
-               */
-              $timeout(function() {
-                var transitionEndEventName = $transition.transitionEndEventName;
-                if (transitionEndEventName) {
-                  $modalStack.get(modalInstance).value.modalDomEl.one(transitionEndEventName, function(evt) {
-                    modalOpenedDeferred.resolve(true);
-                  });
-                }
-                else {
-                  modalOpenedDeferred.resolve(true);
-                }
-              });
+              modalOpenedDeferred.resolve(true);
             }, function () {
               modalOpenedDeferred.reject(false);
             });
