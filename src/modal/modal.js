@@ -187,7 +187,7 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
           });
         } else {
           // Ensure this call is async
-          $timeout(afterAnimating);
+          $timeout(afterAnimating, 0);
         }
 
         function afterAnimating() {
@@ -275,11 +275,6 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
         return openedWindows.top();
       };
 
-      // Added get method (by modalInstance) to $modalStack
-      $modalStack.get = function (modalInstance) {
-        return openedWindows.get(modalInstance);
-      };
-
       return $modalStack;
     }])
 
@@ -290,8 +285,8 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
         backdrop: true, //can be also false or 'static'
         keyboard: true
       },
-      $get: ['$injector', '$rootScope', '$q', '$http', '$templateCache', '$controller', '$modalStack', '$transition', '$timeout',
-        function ($injector, $rootScope, $q, $http, $templateCache, $controller, $modalStack, $transition, $timeout) {
+      $get: ['$injector', '$rootScope', '$q', '$http', '$templateCache', '$controller', '$modalStack',
+        function ($injector, $rootScope, $q, $http, $templateCache, $controller, $modalStack) {
 
           var $modal = {};
 
