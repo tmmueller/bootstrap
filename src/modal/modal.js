@@ -1,410 +1,382 @@
+'use strict';
+
 angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
 
-/**
- * A helper, internal data structure that acts as a map but also allows getting / removing
- * elements in the LIFO order
- */
-  .factory('$$stackedMap', function () {
-    return {
-      createNew: function () {
-        var stack = [];
+	/**
+	 * A helper, internal data structure that acts as a map but also allows getting / removing
+	 * elements in the LIFO order
+	 */
+	.factory('$$stackedMap', [
+		function stackedMapFactory() {
+			return {
+				createNew: function createNewStackedMap() {
+					var stack = [];
 
-        return {
-          add: function (key, value) {
-            stack.push({
-              key: key,
-              value: value
-            });
-          },
-          get: function (key) {
-            for (var i = 0; i < stack.length; i++) {
-              if (key == stack[i].key) {
-                return stack[i];
-              }
-            }
-          },
-          keys: function() {
-            var keys = [];
-            for (var i = 0; i < stack.length; i++) {
-              keys.push(stack[i].key);
-            }
-            return keys;
-          },
-          top: function () {
-            return stack[stack.length - 1];
-          },
-          remove: function (key) {
-            var idx = -1;
-            for (var i = 0; i < stack.length; i++) {
-              if (key == stack[i].key) {
-                idx = i;
-                break;
-              }
-            }
-            return stack.splice(idx, 1)[0];
-          },
-          removeTop: function () {
-            return stack.splice(stack.length - 1, 1)[0];
-          },
-          length: function () {
-            return stack.length;
-          }
-        };
-      }
-    };
-  })
+					function removeFromStack(stackMap, modalInstanceWrapper) {
+						if (stack.length) {
+							for (var idx = (stack.length - 1); idx >= 0; idx--) {
+								if (modalInstanceWrapper === stack[idx]) {
+									if (modalInstanceWrapper.options.backdrop) {
+										stackMap.backdropCount--;
+									}
+									return stack.splice(idx, 1);
+								}
+							}
+						}
+					}
 
-/**
- * A helper directive for the $modal service. It creates a backdrop element.
- */
-  .directive('modalBackdrop', ['$timeout', function ($timeout) {
-    return {
-      restrict: 'EA',
-      replace: true,
-      templateUrl: 'template/modal/backdrop.html',
-      link: function (scope) {
+					function Stack() {
+						this.backdropCount = 0;
+					}
 
-        scope.animate = false;
+					Stack.prototype = {
+						add: function addModalInstance(modalInstanceWrapper) {
+							if (modalInstanceWrapper.options.backdrop) {
+								this.backdropCount++;
+							}
+							stack.push(modalInstanceWrapper);
+						},
+						get: function getModalInstance(modalInstanceWrapper) {
+							if (stack.length) {
+								for (var idx = 0; idx < stack.length; idx++) {
+									if (modalInstanceWrapper === stack[idx]) {
+										return stack[idx];
+									}
+								}
+							}
+						},
+						top: function getTopModalInstance() {
+							if (stack.length) {
+								return stack[stack.length - 1];
+							}
+						},
+						remove: function removeModalInstance(modalInstanceWrapper) {
+							return removeFromStack(this, modalInstanceWrapper);
+						},
+						removeTop: function removeTopModalInstance() {
+							return removeFromStack(this, this.getTopModalInstance());
+						},
+						length: function getModalInstanceLength() {
+							return stack.length;
+						}
+					};
 
-        //trigger CSS transitions
-        $timeout(function () {
-          scope.animate = true;
-        });
-      }
-    };
-  }])
+					return new Stack();
+				}
+			};
+		}
+	])
 
-  .directive('modalWindow', ['$modalStack', '$timeout', function ($modalStack, $timeout) {
-    return {
-      restrict: 'EA',
-      scope: {
-        index: '@',
-        animate: '='
-      },
-      replace: true,
-      transclude: true,
-      templateUrl: 'template/modal/window.html',
-      link: function (scope, element, attrs) {
-        scope.windowClass = attrs.windowClass || '';
+	/**
+	 * A helper directive for the $modal service. It creates a backdrop element.
+	 */
+	.directive('modalBackdrop', [
+		'$timeout',
+		function modalBackdropDirective($timeout) {
+			return {
+				restrict: 'EA',
+				replace: true,
+				templateUrl: 'template/modal/backdrop.html',
+				link: function postLink(scope) {
+					scope.animate = true;
+				}
+			};
+		}
+	])
 
-        $timeout(function () {
-          // trigger CSS transitions
-          scope.animate = true;
-          // focus a freshly-opened modal
-          /**
-           * Auto-focusing of a freshly-opened modal element causes any child elements
-           * with the autofocus attribute to loose focus. This is an issue on touch
-           * based devices which will show and then hide the onscreen keyboard.
-           * Attempts to refocus the autofocus element via JavaScript will not reopen
-           * the onscreen keyboard. Fixed by updated the focusing logic to only autofocus
-           * the modal element if the modal does not contain an autofocus element.
-           */
-          if (!element[0].querySelector || !element[0].querySelectorAll('[autofocus]').length) {
-            element[0].focus();
-          }
-        });
+	.directive('modalWindow', [
+		'$modalStack', '$timeout',
+		function modalWindowDirective($modalStack, $timeout) {
+			return {
+				restrict: 'EA',
+				scope: {
+					index: '@',
+					animate: '='
+				},
+				replace: true,
+				transclude: true,
+				templateUrl: function(tElement, tAttrs) {
+					return tAttrs.templateUrl || 'template/modal/window.html';
+				},
+				link: function postLink(scope, element, attrs) {
+					scope.windowClass = attrs.windowClass || '';
 
-        scope.close = function (evt) {
-          var modal = $modalStack.getTop();
-          if (modal && modal.value.backdrop && modal.value.backdrop != 'static' && (evt.target === evt.currentTarget)) {
-            evt.preventDefault();
-            evt.stopPropagation();
-            $modalStack.dismiss(modal.key, 'backdrop click');
-          }
-        };
-      }
-    };
-  }])
+					$timeout(function () {
+						// trigger CSS transitions
+						scope.animate = true;
 
-  .factory('$modalStack', ['$transition', '$timeout', '$document', '$compile', '$rootScope', '$$stackedMap',
-    function ($transition, $timeout, $document, $compile, $rootScope, $$stackedMap) {
+						/**
+						 * Auto-focusing of a freshly-opened modal element causes any child elements
+						 * with the autofocus attribute to loose focus. This is an issue on touch
+						 * based devices which will show and then hide the onscreen keyboard.
+						 * Attempts to refocus the autofocus element via JavaScript will not reopen
+						 * the onscreen keyboard. Fixed by updated the focusing logic to only autofocus
+						 * the modal element if the modal does not contain an autofocus element.
+						 */
+						if (!element[0].querySelectorAll('[autofocus]').length) {
+							element[0].focus();
+						}
+					});
 
-      var OPENED_MODAL_CLASS = 'modal-open';
+					scope.close = function (evt) {
+						var modalInstanceWrapper = $modalStack.getTop();
 
-      var backdropDomEl, backdropScope;
-      var openedWindows = $$stackedMap.createNew();
-      var $modalStack = {};
+						if (modalInstanceWrapper && modalInstanceWrapper.backdrop && modalInstanceWrapper.backdrop !== 'static' && (evt.target === evt.currentTarget)) {
+							evt.preventDefault();
+							evt.stopPropagation();
+							$modalStack.dismiss(modalInstanceWrapper, 'backdrop click');
+						}
+					};
+				}
+			};
+		}
+	])
 
-      function backdropIndex() {
-        var topBackdropIndex = -1;
-        var opened = openedWindows.keys();
-        for (var i = 0; i < opened.length; i++) {
-          if (openedWindows.get(opened[i]).value.backdrop) {
-            topBackdropIndex = i;
-          }
-        }
-        return topBackdropIndex;
-      }
+	.factory('$modalStack', [
+		'$transition', '$timeout', '$document', '$compile', '$rootScope', '$$stackedMap',
+		function modalStackFactory($transition, $timeout, $document, $compile, $rootScope, $$stackedMap) {
+			var OPENED_MODAL_CLASS = 'modal-open',
+				openedWindows = $$stackedMap.createNew(),
+				$modalStack = {},
+				backdropDomElm,
+				backdropScope;
 
-      $rootScope.$watch(backdropIndex, function(newBackdropIndex){
-        if (backdropScope) {
-          backdropScope.index = newBackdropIndex;
-        }
-      });
+			function removeModalWindow(modalInstanceWrapper) {
+				var body = $document.find('body').eq(0);
 
-      function removeModalWindow(modalInstance) {
+				// clean up the stack
+				openedWindows.remove(modalInstanceWrapper);
 
-        var body = $document.find('body').eq(0);
-        var modalWindow = openedWindows.get(modalInstance).value;
+				modalInstanceWrapper.elm.one($transition.transitionEndEventName, function onTransitionEnd(event) {
+					modalInstanceWrapper.elm.remove();
 
-        //clean up the stack
-        openedWindows.remove(modalInstance);
+					modalInstanceWrapper.scope.$apply();
+					modalInstanceWrapper.scope.$destroy();
 
-        //remove window DOM element
-        removeAfterAnimate(modalWindow.modalDomEl, modalWindow.modalScope, 300, checkRemoveBackdrop);
-        body.toggleClass(OPENED_MODAL_CLASS, openedWindows.length() > 0);
-      }
+					body.toggleClass(OPENED_MODAL_CLASS, openedWindows.length() > 0);
+					checkRemoveBackdrop();
+				});
 
-      function checkRemoveBackdrop() {
-          //remove backdrop if no longer needed
-          if (backdropDomEl && backdropIndex() == -1) {
-            var backdropScopeRef = backdropScope;
-            removeAfterAnimate(backdropDomEl, backdropScope, 150, function () {
-              backdropScopeRef.$destroy();
-              backdropScopeRef = null;
-            });
-            backdropDomEl = undefined;
-            backdropScope = undefined;
-          }
-      }
+				// Closing animation
+				$timeout(function() {
+					modalInstanceWrapper.scope.animate = false;
+				});
+			}
 
-      function removeAfterAnimate(domEl, scope, emulateTime, done) {
-        // Closing animation
-        scope.animate = false;
+			function checkRemoveBackdrop() {
+				var backdropScopeRef;
 
-        var transitionEndEventName = $transition.transitionEndEventName;
-        if (transitionEndEventName) {
-          // transition out
-          var timeout = $timeout(afterAnimating, emulateTime);
+				// remove backdrop if no longer needed
+				if (backdropDomElm && openedWindows.backdropCount === 0) {
 
-          domEl.bind(transitionEndEventName, function () {
-            $timeout.cancel(timeout);
-            afterAnimating();
-            scope.$apply();
-          });
-        } else {
-          // Ensure this call is async
-          $timeout(afterAnimating, 0);
-        }
+					backdropScope.animate = false;
+					backdropScope.$apply();
+					backdropScope.$destroy();
 
-        function afterAnimating() {
-          if (afterAnimating.done) {
-            return;
-          }
-          afterAnimating.done = true;
+					backdropDomElm.remove();
+					backdropDomElm = undefined;
 
-          domEl.remove();
-          if (done) {
-            done();
-          }
-        }
-      }
+					backdropScope = undefined;
+				}
+			}
 
-      $document.bind('keydown', function (evt) {
-        var modal;
+			$rootScope.$watch(openedWindows.backdropCount, function watchModalBackdropIndex(newVal, oldVal){
+				if (newVal !== oldVal && backdropScope) {
+					backdropScope.index = (newVal - 1);
+				}
+			});
 
-        if (evt.which === 27) {
-          modal = openedWindows.top();
-          if (modal && modal.value.keyboard) {
-            $rootScope.$apply(function () {
-              $modalStack.dismiss(modal.key);
-            });
-          }
-        }
-      });
+			$document.on('keydown', function onKeyDown(event) {
+				var modalInstanceWrapper;
 
-      $modalStack.open = function (modalInstance, modal) {
+				if (event.which === 27) {
+					modalInstanceWrapper = openedWindows.top();
 
-        openedWindows.add(modalInstance, {
-          deferred: modal.deferred,
-          modalScope: modal.scope,
-          backdrop: modal.backdrop,
-          keyboard: modal.keyboard
-        });
+					if (modalInstanceWrapper && modalInstanceWrapper.options.keyboard) {
+						event.preventDefault();
 
-        var body = $document.find('body').eq(0),
-            currBackdropIndex = backdropIndex();
+						$rootScope.$apply(function () {
+							$modalStack.dismiss(modalInstanceWrapper, 'escape key press');
+						});
+					}
+				}
+			});
 
-        if (currBackdropIndex >= 0 && !backdropDomEl) {
-          backdropScope = $rootScope.$new(true);
-          backdropScope.index = currBackdropIndex;
-          backdropDomEl = $compile('<div modal-backdrop></div>')(backdropScope);
-          body.append(backdropDomEl);
-        }
-          
-        var angularDomEl = angular.element('<div modal-window></div>');
-        angularDomEl.attr('window-class', modal.windowClass);
-        angularDomEl.attr('index', openedWindows.length() - 1);
-        angularDomEl.attr('animate', 'animate');
-        angularDomEl.html(modal.content);
+			$modalStack.open = function modalStackOpen(modalInstanceWrapper) {
+				var body = $document.find('body').eq(0),
+					currBackdropIndex;
 
-        var modalDomEl = $compile(angularDomEl)(modal.scope);
-        openedWindows.top().value.modalDomEl = modalDomEl;
-        body.append(modalDomEl);
-        body.addClass(OPENED_MODAL_CLASS);
-      };
+				modalInstanceWrapper.elm.attr('index', openedWindows.length() - 1);
 
-      $modalStack.close = function (modalInstance, result) {
-        var modalWindow = openedWindows.get(modalInstance).value;
-        if (modalWindow) {
-          modalWindow.deferred.resolve(result);
-          removeModalWindow(modalInstance);
-        }
-      };
+				openedWindows.add(modalInstanceWrapper);
 
-      $modalStack.dismiss = function (modalInstance, reason) {
-        var modalWindow = openedWindows.get(modalInstance).value;
-        if (modalWindow) {
-          modalWindow.deferred.reject(reason);
-          removeModalWindow(modalInstance);
-        }
-      };
+				currBackdropIndex = openedWindows.backdropCount - 1;
 
-      $modalStack.dismissAll = function (reason) {
-        var topModal = this.getTop();
-        while (topModal) {
-          this.dismiss(topModal.key, reason);
-          topModal = this.getTop();
-        }
-      };
+				if (currBackdropIndex >= 0 && !backdropDomElm) {
+					backdropScope = $rootScope.$new(true);
+					backdropScope.index = currBackdropIndex;
 
-      $modalStack.getTop = function () {
-        return openedWindows.top();
-      };
+					backdropDomElm = $compile('<div data-modal-backdrop></div>')(backdropScope);
+					body.append(backdropDomElm);
+				}
 
-      /**
-       * @name get
-       * @param  {Object} modalInstance The modal instance to get the openedWindow object by
-       * @return {Object} Opened window
-       * @description
-       * Added get method (by modalInstance) to $modalStack
-       */
-      $modalStack.get = function (modalInstance) {
-        return openedWindows.get(modalInstance);
-      };
+				//openedWindows.top().elm = modalInstanceWrapper.elm;
+				body.append(modalInstanceWrapper.elm);
+				body.addClass(OPENED_MODAL_CLASS);
+			};
 
-      return $modalStack;
-    }])
+			$modalStack.close = function modalStackClose(modalInstanceWrapper, result) {
+				modalInstanceWrapper.resultDeferred.resolve(result);
+				removeModalWindow(modalInstanceWrapper);
+			};
 
-  .provider('$modal', function () {
+			$modalStack.dismiss = function modalStackDismiss(modalInstanceWrapper, reason) {
+				modalInstanceWrapper.resultDeferred.reject(reason);
+				removeModalWindow(modalInstanceWrapper);
+			};
 
-    var $modalProvider = {
-      options: {
-        backdrop: true, //can be also false or 'static'
-        keyboard: true
-      },
-      $get: ['$injector', '$rootScope', '$q', '$http', '$templateCache', '$controller', '$modalStack', '$transition', '$timeout',
-        function ($injector, $rootScope, $q, $http, $templateCache, $controller, $modalStack, $transition, $timeout) {
+			$modalStack.dismissAll = function modalStackDismissAll(reason) {
+				var topModal = this.getTop();
+				while (topModal) {
+					this.dismiss(topModal, reason);
+					topModal = this.getTop();
+				}
+			};
 
-          var $modal = {};
+			$modalStack.getTop = function modalStackGetTop() {
+				return openedWindows.top();
+			};
 
-          function getTemplatePromise(options) {
-            return options.template ? $q.when(options.template) :
-              $http.get(options.templateUrl, {cache: $templateCache}).then(function (result) {
-                return result.data;
-              });
-          }
+			return $modalStack;
+		}
+	])
 
-          function getResolvePromises(resolves) {
-            var promisesArr = [];
-            angular.forEach(resolves, function (value, key) {
-              if (angular.isFunction(value) || angular.isArray(value)) {
-                promisesArr.push($q.when($injector.invoke(value)));
-              }
-            });
-            return promisesArr;
-          }
-
-          $modal.open = function (modalOptions) {
-
-            var modalResultDeferred = $q.defer();
-            var modalOpenedDeferred = $q.defer();
-
-            //prepare an instance of a modal to be injected into controllers and returned to a caller
-            var modalInstance = {
-              result: modalResultDeferred.promise,
-              opened: modalOpenedDeferred.promise,
-              close: function (result) {
-                $modalStack.close(modalInstance, result);
-              },
-              dismiss: function (reason) {
-                $modalStack.dismiss(modalInstance, reason);
-              }
-            };
-
-            //merge and clean up options
-            modalOptions = angular.extend({}, $modalProvider.options, modalOptions);
-            modalOptions.resolve = modalOptions.resolve || {};
-
-            //verify options
-            if (!modalOptions.template && !modalOptions.templateUrl) {
-              throw new Error('One of template or templateUrl options is required.');
-            }
-
-            var templateAndResolvePromise =
-              $q.all([getTemplatePromise(modalOptions)].concat(getResolvePromises(modalOptions.resolve)));
+	.provider('$modal', [
+		function modalProvider() {
+			return {
+				$get: [
+					'$injector', '$rootScope', '$q', '$http', '$templateCache', '$compile', '$controller', '$modalStack', '$transition',
+					function getModal($injector, $rootScope, $q, $http, $templateCache, $compile, $controller, $modalStack, $transition) {
+						var defaultOptions = {
+							backdrop: true, // can be also false or 'static'
+							keyboard: true
+						};
 
 
-            templateAndResolvePromise.then(function resolveSuccess(tplAndVars) {
+						function ModalInstance(wrapper) {
+							this.result = wrapper.resultDeferred.promise;
+							this.opened = wrapper.openedDeferred.promise;
 
-              var modalScope = (modalOptions.scope || $rootScope).$new();
-              modalScope.$close = modalInstance.close;
-              modalScope.$dismiss = modalInstance.dismiss;
+							this.close = function close(result) {
+								$modalStack.close(wrapper, result);
+							};
 
-              var ctrlInstance, ctrlLocals = {};
-              var resolveIter = 1;
+							this.dismiss = function dismiss(reason) {
+								$modalStack.dismiss(wrapper, reason);
+							};
+						}
 
-              //controllers
-              if (modalOptions.controller) {
-                ctrlLocals.$scope = modalScope;
-                ctrlLocals.$modalInstance = modalInstance;
-                angular.forEach(modalOptions.resolve, function (value, key) {
-                  ctrlLocals[key] = tplAndVars[resolveIter++];
-                });
 
-                ctrlInstance = $controller(modalOptions.controller, ctrlLocals);
-              }
+						function ModalInstanceWrapper(options, elm) {
+							var modalInstanceWrapper = this,
+								templatePromise;
 
-              $modalStack.open(modalInstance, {
-                scope: modalScope,
-                deferred: modalResultDeferred,
-                content: tplAndVars[0],
-                backdrop: modalOptions.backdrop,
-                keyboard: modalOptions.keyboard,
-                windowClass: modalOptions.windowClass
-              });
+							// merge and clean up options
+							options = angular.extend({
+								resolve: {}
+							}, defaultOptions, options);
 
-            }, function resolveError(reason) {
-              modalResultDeferred.reject(reason);
-            });
+							// verify options
+							if (!options.template && !options.templateUrl) {
+								throw new Error('One of template or templateUrl options is required.');
+							}
 
-            templateAndResolvePromise.then(function () {
-              /**
-               * Moved the modalOpenedDeferred to a transition end event (when available)
-               * so that the opened promise doesn't get resolved until the modal is in
-               * the DOM and visible / accessible
-               */
-              $timeout(function() {
-                var transitionEndEventName = $transition.transitionEndEventName;
-                if (transitionEndEventName) {
-                  $modalStack.get(modalInstance).value.modalDomEl.one(transitionEndEventName, function(evt) {
-                    modalOpenedDeferred.resolve(true);
-                  });
-                }
-                else {
-                  modalOpenedDeferred.resolve(true);
-                }
-              });
-            }, function () {
-              modalOpenedDeferred.reject(false);
-            });
+							this.options = options;
+							this.resultDeferred = $q.defer();
+							this.openedDeferred = $q.defer();
+							this.instance = new ModalInstance(this);
 
-            return modalInstance;
-          };
+							templatePromise = (options.template)?
+								$q.when(options.template) :
+								$http.get(options.templateUrl, { cache: $templateCache })
+									.then(function getModalTemplateSuccess(result) {
+										return result.data;
+									});
 
-          return $modal;
-        }]
-    };
+							$q.all([templatePromise])
+								.then(function modalTemplatePromiseSuccess(template) {
+									// Create an array of resolve promises
+									var promises = [];
 
-    return $modalProvider;
-  });
+									// Add the resovle promises
+									angular.forEach(options.resolve, function eachResolve(resolve) {
+										if (angular.isFunction(resolve) || angular.isArray(resolve)) {
+											promises.push($q.when($injector.invoke(resolve)));
+										}
+									});
+
+									modalInstanceWrapper.template = template;
+
+									$q.all(promises)
+										.then(
+											function modalResolveAllSuccess(vars) {
+												var ctrlLocals = {},
+													varsIdx = 0,
+													ctrlInstance,
+													modelWindowElm = angular.element('<div data-modal-window></div>')
+														.attr({
+															'template-url': options.windowTemplateUrl,
+															'window-class': options.windowClass,
+															'animate': 'animate'
+														})
+														.html(template);
+
+												modalInstanceWrapper.controller = null;
+												modalInstanceWrapper.scope = (options.scope || $rootScope).$new();
+												modalInstanceWrapper.scope.$close = modalInstanceWrapper.instance.close;
+												modalInstanceWrapper.scope.$dismiss = modalInstanceWrapper.instance.dismiss;
+
+												// controllers
+												if (options.controller) {
+													ctrlLocals.$scope = modalInstanceWrapper.scope;
+													ctrlLocals.$modalInstance = modalInstanceWrapper.instance;
+
+													angular.forEach(options.resolve, function eachResolve(resolve, key) {
+														ctrlLocals[key] = vars[varsIdx++];
+													});
+
+													modalInstanceWrapper.controller = $controller(options.controller, ctrlLocals);
+												}
+
+												// Compile the template
+												modalInstanceWrapper.elm = $compile(modelWindowElm)(modalInstanceWrapper.scope);
+
+												modalInstanceWrapper.elm.one($transition.transitionEndEventName, function onTransitionEnd(event) {
+													modalInstanceWrapper.openedDeferred.resolve(true);
+												});
+
+												$modalStack.open(modalInstanceWrapper);
+
+											},
+											function modalResolveAllError(reason) {
+												modalInstanceWrapper.resultDeferred.reject(reason);
+												modalInstanceWrapper.openedDeferred.reject(false);
+											}
+										);
+								});
+						}
+
+						// Return the public interface
+						return {
+							open: function openModal(options) {
+								// prepare an instance of a modal to be injected into controllers and returned to a caller
+								return new ModalInstanceWrapper(options).instance;
+							}
+						};
+					}
+				]
+			};
+		}
+	]);
+
+/* EOF */
