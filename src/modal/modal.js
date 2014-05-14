@@ -255,8 +255,8 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
 		function modalProvider() {
 			return {
 				$get: [
-					'$injector', '$rootScope', '$q', '$http', '$templateCache', '$compile', '$controller', '$modalStack', '$transition',
-					function getModal($injector, $rootScope, $q, $http, $templateCache, $compile, $controller, $modalStack, $transition) {
+					'$injector', '$rootScope', '$q', '$http', '$templateCache', '$compile', '$controller', '$modalStack', '$transition', '$timeout',
+					function getModal($injector, $rootScope, $q, $http, $templateCache, $compile, $controller, $modalStack, $transition, $timeout) {
 						var defaultOptions = {
 							backdrop: true, // can be also false or 'static'
 							keyboard: true
@@ -357,6 +357,11 @@ angular.module('ui.bootstrap.modal', ['ui.bootstrap.transition'])
 
 												$modalStack.open(modalInstanceWrapper);
 
+												$timeout(function() {
+													modalInstanceWrapper.elm.one($transition.transitionEndEventName, function onTransitionEnd(event) {
+														modalInstanceWrapper.openedDeferred.resolve(true);
+													});
+												});
 											},
 											function modalResolveAllError(reason) {
 												modalInstanceWrapper.resultDeferred.reject(reason);
